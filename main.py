@@ -8,6 +8,7 @@ import pyautogui
 import datetime
 import pyaudio
 from vosk import Model, KaldiRecognizer
+from fuzzywuzzy import fuzz  # Fuzzy matching library (install it with 'pip install fuzzywuzzy')
 
 # Initialize pyttsx3 for text-to-speech
 def speak(text):
@@ -17,7 +18,7 @@ def speak(text):
 
 # Function to listen and process speech in real-time
 def take_command_real_time():
-    model_path = "path/to/vosk-model"  # Replace with your Vosk model path
+    model_path = "vosk"  # Replace with your Vosk model path
     if not os.path.exists(model_path):
         print(f"Model not found at {model_path}")
         return
@@ -43,25 +44,46 @@ def take_command_real_time():
             command = result_json.get('text', '').lower()
             if command:
                 print(f"You said: {command}")
-                execute_command(command)
+                best_command = match_command(command)
+                if best_command:
+                    print(f"Best match: {best_command}")
+                    execute_command(best_command)
+
+# Fuzzy matching logic to handle mispronunciations
+def match_command(command):
+    # Define a list of available commands
+    commands = [
+        "open notepad", "battery status", "what time is it", "open website",
+        "take screenshot", "volume up", "volume down", "mute", "exit"
+    ]
+
+    best_match = None
+    highest_similarity = 0
+
+    for predefined_command in commands:
+        similarity = fuzz.ratio(command, predefined_command)
+        if similarity > highest_similarity and similarity > 70:  # Threshold for similarity
+            highest_similarity = similarity
+            best_match = predefined_command
+
+    return best_match
 
 # Function to execute various commands
 def execute_command(command):
-    if "open" in command:
-        app_name = command.split("open", 1)[1].strip()
-        open_application(app_name)
+    if "open notepad" in command:
+        open_application("notepad.exe")
 
-    elif "battery" in command:
+    elif "battery status" in command:
         get_battery_status()
 
-    elif "time" in command:
+    elif "what time is it" in command:
         get_time()
 
-    elif "website" in command:
+    elif "open website" in command:
         url = command.split("website", 1)[1].strip()
         open_website(url)
 
-    elif "screenshot" in command:
+    elif "take screenshot" in command:
         take_screenshot()
 
     elif "volume up" in command:
