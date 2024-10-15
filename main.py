@@ -23,7 +23,31 @@ def speak(text):
 # Use Vosk for offline speech recognition
 def take_command():
     recognizer = sr.Recognizer()
-    model_path = "path_to_your_vosk_model"  # Replace with the path to your Vosk model directory
+    model_path = "path/to/vosk-model"
+    model = Model(model_path)
+
+    with sr.Microphone(sample_rate=16000) as source:
+        recognizer.adjust_for_ambient_noise(source, duration=1)
+        print("Listening...")
+        audio = recognizer.listen(source)
+
+    try:
+        rec = KaldiRecognizer(model, 16000)
+        if rec.AcceptWaveform(audio.get_raw_data()):
+            result = rec.Result()
+            result_json = json.loads(result)
+            command = result_json.get("text", "").lower()
+            print("You said:", command)
+            return command
+        else:
+            print("Speech not recognized properly")
+            return None
+    except Exception as e:
+        print(f"Error: {e}")
+        return None
+
+    recognizer = sr.Recognizer()
+    model_path = "vosk"  # Replace with the path to your Vosk model directory
     model = Model(model_path)  # Load the Vosk model
     
     with sr.Microphone() as source:
