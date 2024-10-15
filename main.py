@@ -1,137 +1,97 @@
 import os
 import sys
-import subprocess
-import platform
+import json
 import webbrowser
 import pyttsx3
 import psutil
 import pyautogui
-import speech_recognition as sr
 import datetime
-import time
-import json
+import pyaudio
 from vosk import Model, KaldiRecognizer
-import ctypes
-import shutil
 
-# Initialize text-to-speech engine
+# Initialize pyttsx3 for text-to-speech
 def speak(text):
     engine = pyttsx3.init()
     engine.say(text)
     engine.runAndWait()
 
-# Use Vosk for offline speech recognition
-def take_command():
-    recognizer = sr.Recognizer()
-    model_path = "path/to/vosk-model"
+# Function to listen and process speech in real-time
+def take_command_real_time():
+    model_path = "path/to/vosk-model"  # Replace with your Vosk model path
+    if not os.path.exists(model_path):
+        print(f"Model not found at {model_path}")
+        return
+
     model = Model(model_path)
+    recognizer = KaldiRecognizer(model, 16000)
 
-    with sr.Microphone(sample_rate=16000) as source:
-        recognizer.adjust_for_ambient_noise(source, duration=1)
-        print("Listening...")
-        audio = recognizer.listen(source)
+    # Use PyAudio for real-time audio streaming
+    p = pyaudio.PyAudio()
+    stream = p.open(format=pyaudio.paInt16, channels=1, rate=16000, input=True, frames_per_buffer=8000)
+    stream.start_stream()
 
-    try:
-        rec = KaldiRecognizer(model, 16000)
-        if rec.AcceptWaveform(audio.get_raw_data()):
-            result = rec.Result()
+    print("Listening...")
+
+    while True:
+        data = stream.read(4000, exception_on_overflow=False)  # Read small chunks for real-time response
+        if len(data) == 0:
+            continue
+
+        if recognizer.AcceptWaveform(data):  # Process each audio chunk
+            result = recognizer.Result()
             result_json = json.loads(result)
-            command = result_json.get("text", "").lower()
-            print("You said:", command)
-            return command
-        else:
-            print("Speech not recognized properly")
-            return None
-    except Exception as e:
-        print(f"Error: {e}")
-        return None
+            command = result_json.get('text', '').lower()
+            if command:
+                print(f"You said: {command}")
+                execute_command(command)
 
-    recognizer = sr.Recognizer()
-    model_path = "vosk"  # Replace with the path to your Vosk model directory
-    model = Model(model_path)  # Load the Vosk model
-    
-    with sr.Microphone() as source:
-        print("Listening...")
-        recognizer.adjust_for_ambient_noise(source)
-        audio = recognizer.listen(source)
-    
-    try:
-        # Convert speech to text using Vosk offline model
-        rec = KaldiRecognizer(model, 16000)
-        rec.AcceptWaveform(audio.get_raw_data())
-        result = rec.Result()
-        result_json = json.loads(result)
-        command = result_json.get("text", "").lower()
-        
-        print("You said:", command)
-    except Exception as e:
-        print("Sorry, I didn't catch that. Please say again.", e)
-        command = None
-    return command
+# Function to execute various commands
+def execute_command(command):
+    if "open" in command:
+        app_name = command.split("open", 1)[1].strip()
+        open_application(app_name)
 
-# Open application by name
+    elif "battery" in command:
+        get_battery_status()
+
+    elif "time" in command:
+        get_time()
+
+    elif "website" in command:
+        url = command.split("website", 1)[1].strip()
+        open_website(url)
+
+    elif "screenshot" in command:
+        take_screenshot()
+
+    elif "volume up" in command:
+        pyautogui.press("volumeup")
+        speak("Increasing volume")
+
+    elif "volume down" in command:
+        pyautogui.press("volumedown")
+        speak("Decreasing volume")
+
+    elif "mute" in command:
+        pyautogui.press("volumemute")
+        speak("Muting system")
+
+    elif "exit" in command:
+        speak("Goodbye!")
+        sys.exit()
+
+    else:
+        speak("Sorry, I didn't understand that command.")
+
+# Open application by name (example: "open notepad")
 def open_application(application_name):
     try:
-        if platform.system() == "Windows":
-            os.startfile(application_name)
-        elif platform.system() == "Darwin":  # macOS
-            subprocess.Popen(["open", application_name])
-        else:  # Linux
-            subprocess.Popen(["xdg-open", application_name])
+        os.startfile(application_name)
+        speak(f"Opening {application_name}")
     except Exception as e:
-        speak(f"Sorry, I couldn't open {application_name}")
-        print(e)
+        speak(f"Could not open {application_name}. Error: {e}")
 
-# Control system volume
-def control_volume(action):
-    if platform.system() == "Windows":
-        if "increase" in action:
-            for _ in range(5):
-                ctypes.windll.user32.keybd_event(0xAF, 0, 0, 0)  # Volume Up
-        elif "decrease" in action:
-            for _ in range(5):
-                ctypes.windll.user32.keybd_event(0xAE, 0, 0, 0)  # Volume Down
-        elif "mute" in action:
-            ctypes.windll.user32.keybd_event(0xAD, 0, 0, 0)  # Mute
-
-# Adjust system brightness (Windows only)
-def control_brightness(level):
-    try:
-        if platform.system() == "Windows":
-            level = max(0, min(100, level))  # Ensure brightness is between 0 and 100
-            subprocess.run(f"powershell (Get-WmiObject -Namespace root/wmi -Class WmiMonitorBrightnessMethods).WmiSetBrightness(1,{level})")
-            speak(f"Brightness set to {level} percent")
-        else:
-            speak("Brightness control is not supported on this system.")
-    except Exception as e:
-        speak("Failed to adjust brightness.")
-        print(e)
-
-# Get CPU and RAM usage
-def get_system_status():
-    cpu_usage = psutil.cpu_percent(interval=1)
-    ram_usage = psutil.virtual_memory().percent
-    speak(f"CPU usage is at {cpu_usage} percent and RAM usage is at {ram_usage} percent.")
-
-# Open specific file or folder
-def open_file(file_path):
-    try:
-        os.startfile(file_path)
-        speak(f"Opening {file_path}")
-    except Exception as e:
-        speak(f"Could not open {file_path}")
-        print(e)
-
-# Create a folder
-def create_folder(folder_path):
-    try:
-        os.makedirs(folder_path, exist_ok=True)
-        speak(f"Folder created at {folder_path}")
-    except Exception as e:
-        speak(f"Could not create folder at {folder_path}")
-        print(e)
-
-# Get battery status
+# Get battery status using psutil
 def get_battery_status():
     battery = psutil.sensors_battery()
     if battery is not None:
@@ -145,58 +105,35 @@ def get_battery_status():
     else:
         speak("Could not retrieve battery information.")
 
-# Get current time
+# Get the current time
 def get_time():
     now = datetime.datetime.now()
     current_time = now.strftime("%I:%M %p")
     speak(f"The current time is {current_time}")
+    print(f"Current time: {current_time}")
 
-# Open a website
+# Open a website with the given URL
 def open_website(url):
-    webbrowser.open(url)
+    try:
+        webbrowser.open(f"https://{url}")
+        speak(f"Opening {url}")
+    except Exception as e:
+        speak(f"Could not open the website. Error: {e}")
 
-# Take a screenshot
+# Take a screenshot and save it
 def take_screenshot():
     screenshot = pyautogui.screenshot()
     screenshot.save("screenshot.png")
     speak("Screenshot taken and saved as screenshot.png")
 
-# Main logic
+# Main function to start the assistant
 def main():
     speak("Hello! How can I assist you?")
-    while True:
-        command = take_command()
-        if command:
-            if "open" in command and "file" in command:
-                file_path = command.split(" ", 2)[2]
-                open_file(file_path)
-            elif "create folder" in command:
-                folder_path = command.split(" ", 2)[2]
-                create_folder(folder_path)
-            elif "open" in command:
-                application_name = command.split(" ", 1)[1]
-                open_application(application_name)
-            elif "volume" in command:
-                control_volume(command)
-            elif "brightness" in command:
-                level = int(command.split(" ", 1)[1])
-                control_brightness(level)
-            elif "battery" in command:
-                get_battery_status()
-            elif "time" in command:
-                get_time()
-            elif "website" in command:
-                url = command.split(" ", 1)[1]
-                open_website(url)
-            elif "screenshot" in command:
-                take_screenshot()
-            elif "system status" in command:
-                get_system_status()
-            elif "exit" in command:
-                speak("Goodbye!")
-                sys.exit()
-            else:
-                speak("Sorry, I didn't understand that command.")
+    try:
+        take_command_real_time()
+    except KeyboardInterrupt:
+        print("Program terminated.")
+        sys.exit()
 
 if __name__ == "__main__":
     main()
