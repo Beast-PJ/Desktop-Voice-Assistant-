@@ -16,6 +16,46 @@ def speak(text):
     engine.say(text)
     engine.runAndWait()
 
+# Fuzzy matching function to find similar commands
+def match_command(command):
+    command_synonyms = {
+        "open notepad": ["launch notepad", "start notepad", "run notepad", "open note", "create note"],
+        "battery status": ["show battery", "check battery", "battery level", "battery information"],
+        "what time is it": ["current time", "time now", "what's the time", "tell me the time"],
+        "open website": ["launch site", "open url", "visit website", "go to website"],
+        "take screenshot": ["capture screen", "take a snapshot", "screenshot now"],
+        "volume up": ["increase volume", "raise volume", "turn up volume", "louder"],
+        "volume down": ["decrease volume", "turn down volume", "reduce volume", "quieter"],
+        "mute": ["mute sound", "silence", "turn off volume"],
+        "lock computer": ["lock pc", "lock the computer", "lock the system"],
+        "shutdown": ["turn off computer", "shut down pc", "power off"],
+        "restart": ["reboot computer", "restart pc", "reboot system"],
+        "log out": ["log off", "sign out", "logout from account"],
+        "minimize windows": ["hide windows", "minimize all", "collapse windows"],
+        "maximize windows": ["maximize window", "enlarge window"],
+        "close window": ["close this window", "exit window", "close the application"],
+        "play music": ["start music", "play songs", "open music player"],
+        "pause music": ["stop music", "pause song"],
+        "show cpu usage": ["cpu performance", "cpu stats", "check cpu usage"],
+        "show memory": ["memory status", "check memory", "available memory"],
+        "create folder": ["make new folder", "create directory", "new folder"],
+        "delete file": ["remove file", "erase file", "delete document"],
+        "make a note": ["write a note", "create a note", "new note", "make note"],
+    }
+
+    highest_similarity = 0
+    best_match = None
+
+    for key_command, synonyms in command_synonyms.items():
+        # Check for a direct match or similar command
+        for synonym in synonyms:
+            similarity = fuzz.ratio(command, synonym)
+            if similarity > highest_similarity and similarity > 70:  # 70% threshold
+                highest_similarity = similarity
+                best_match = key_command
+    
+    return best_match
+
 # Real-time voice command processing with fuzzy matching
 def take_command_real_time():
     model_path = "path/to/vosk-model"
@@ -48,27 +88,6 @@ def take_command_real_time():
                 if best_command:
                     print(f"Best match: {best_command}")
                     execute_command(best_command)
-
-# Fuzzy matching to interpret mispronunciations
-def match_command(command):
-    commands = [
-        "open notepad", "battery status", "what time is it", "open website",
-        "take screenshot", "volume up", "volume down", "mute", "exit",
-        "lock computer", "shutdown", "restart", "log out", "minimize windows", 
-        "maximize windows", "close window", "play music", "pause music", 
-        "show cpu usage", "show memory", "create folder", "delete file", "make a note"
-    ]
-
-    best_match = None
-    highest_similarity = 0
-
-    for predefined_command in commands:
-        similarity = fuzz.ratio(command, predefined_command)
-        if similarity > highest_similarity and similarity > 70:  # 70% match threshold
-            highest_similarity = similarity
-            best_match = predefined_command
-
-    return best_match
 
 # Command execution based on the best match
 def execute_command(command):
@@ -200,17 +219,8 @@ def delete_file(file_name):
 # Create a quick note
 def make_note():
     with open("note.txt", "w") as file:
-        file.write("This is a quick note.")
-    speak("Note has been created.")
+        file.write("This is a quick note")
+    speak("Note created successfully")
 
-# Main function to start the assistant
-def main():
-    speak("Hello! How can I assist you?")
-    try:
-        take_command_real_time()
-    except KeyboardInterrupt:
-        print("Program terminated.")
-        sys.exit()
-
-if __name__ == "__main__":
-    main()
+# Start the voice command loop
+take_command_real_time()
