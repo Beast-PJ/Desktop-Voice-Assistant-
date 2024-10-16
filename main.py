@@ -9,6 +9,7 @@ import datetime
 import pyaudio
 from vosk import Model, KaldiRecognizer
 from fuzzywuzzy import fuzz
+import pvporcupine  # For wake word detection
 
 # Initialize pyttsx3 for text-to-speech
 def speak(text):
@@ -53,8 +54,59 @@ def match_command(command):
             if similarity > highest_similarity and similarity > 70:  # 70% threshold
                 highest_similarity = similarity
                 best_match = key_command
-    
+
     return best_match
+
+# Function to listen for the wake word using Porcupine
+def listen_for_wake_word():
+    porcupine = None
+    try:
+        access_key = "YOUR_ACCESS_KEY_HERE"  # Replace this with your actual Picovoice access key
+        porcupine = pvporcupine.create(access_key=access_key, keywords="jarvis")  # Add wake words here
+        pa = pyaudio.PyAudio()
+        stream = pa.open(format=pyaudio.paInt16, channels=1, rate=porcupine.sample_rate, input=True, frames_per_buffer=porcupine.frame_length)
+        stream.start_stream()
+
+        print("Listening for wake word...")
+
+        while True:
+            pcm = stream.read(porcupine.frame_length, exception_on_overflow=False)
+            pcm = bytearray(pcm)
+            keyword_index = porcupine.process(pcm)
+            if keyword_index >= 0:
+                print("Wake word detected!")
+                speak("I'm listening")
+                take_command_real_time()
+
+    except KeyboardInterrupt:
+        print("Terminated by user")
+    finally:
+        if porcupine:
+            porcupine.delete()
+
+    porcupine = None
+    try:
+        porcupine = pvporcupine.create(keywords=["Arise", "computer"])  # Customize your wake words here
+        pa = pyaudio.PyAudio()
+        stream = pa.open(format=pyaudio.paInt16, channels=1, rate=porcupine.sample_rate, input=True, frames_per_buffer=porcupine.frame_length)
+        stream.start_stream()
+
+        print("Listening for wake word...")
+
+        while True:
+            pcm = stream.read(porcupine.frame_length, exception_on_overflow=False)
+            pcm = bytearray(pcm)
+            keyword_index = porcupine.process(pcm)
+            if keyword_index >= 0:
+                print("Wake word detected!")
+                speak("I'm listening")
+                take_command_real_time()
+                
+    except KeyboardInterrupt:
+        print("Terminated by user")
+    finally:
+        if porcupine:
+            porcupine.delete()
 
 # Real-time voice command processing with fuzzy matching
 def take_command_real_time():
@@ -71,7 +123,7 @@ def take_command_real_time():
     stream = p.open(format=pyaudio.paInt16, channels=1, rate=16000, input=True, frames_per_buffer=8000)
     stream.start_stream()
 
-    print("Listening...")
+    print("Listening for commands...")
 
     while True:
         data = stream.read(4000, exception_on_overflow=False)
@@ -88,6 +140,8 @@ def take_command_real_time():
                 if best_command:
                     print(f"Best match: {best_command}")
                     execute_command(best_command)
+                else:
+                    speak("Sorry, I didn't understand that command.")
 
 # Command execution based on the best match
 def execute_command(command):
@@ -153,74 +207,70 @@ def execute_command(command):
     else:
         speak("Sorry, I didn't understand that command.")
 
-# Open application by name
-def open_application(application_name):
-    try:
-        os.startfile(application_name)
-        speak(f"Opening {application_name}")
-    except Exception as e:
-        speak(f"Could not open {application_name}. Error: {e}")
+# Helper functions
 
-# Get battery status using psutil
+# Function to open an application
+def open_application(app_path):
+    try:
+        os.startfile(app_path)
+        speak(f"Opening {app_path}")
+    except Exception as e:
+        speak(f"Unable to open {app_path}: {str(e)}")
+
+# Function to get battery status
 def get_battery_status():
     battery = psutil.sensors_battery()
-    if battery:
-        plugged = "Plugged in" if battery.power_plugged else "Not plugged in"
-        speak(f"Battery is {battery.percent} percent and {plugged}")
-    else:
-        speak("Could not retrieve battery information.")
+    percent = battery.percent
+    speak(f"Battery is at {percent} percent")
 
-# Get current time
+# Function to get current time
 def get_time():
-    now = datetime.datetime.now()
-    current_time = now.strftime("%I:%M %p")
-    speak(f"The current time is {current_time}")
+    time = datetime.datetime.now().strftime("%I:%M %p")
+    speak(f"The time is {time}")
 
-# Open a website with the given URL
+# Function to open a website
 def open_website(url):
-    try:
-        webbrowser.open(f"https://{url}")
-        speak(f"Opening {url}")
-    except Exception as e:
-        speak(f"Could not open the website. Error: {e}")
+    if not url.startswith("http"):
+        url = "http://" + url
+    webbrowser.open(url)
+    speak(f"Opening {url}")
 
-# Take a screenshot and save it
+# Function to take a screenshot
 def take_screenshot():
     screenshot = pyautogui.screenshot()
     screenshot.save("screenshot.png")
-    speak("Screenshot taken and saved.")
+    speak("Screenshot taken")
 
-# Show CPU usage
+# Function to show CPU usage
 def show_cpu_usage():
-    cpu_usage = psutil.cpu_percent(interval=1)
-    speak(f"CPU usage is {cpu_usage} percent")
+    cpu_percent = psutil.cpu_percent(interval=1)
+    speak(f"CPU is at {cpu_percent} percent")
 
-# Show available memory
+# Function to show memory info
 def show_memory_info():
     memory = psutil.virtual_memory()
-    speak(f"Available memory is {memory.available // (1024 * 1024)} MB")
+    speak(f"Available memory is {memory.available / 1024 / 1024:.2f} MB")
 
-# Create a new folder
+# Function to create a folder
 def create_folder(folder_name):
-    try:
-        os.mkdir(folder_name)
-        speak(f"Created folder {folder_name}")
-    except FileExistsError:
-        speak("Folder already exists")
+    os.makedirs(folder_name, exist_ok=True)
+    speak(f"Folder {folder_name} created")
 
-# Delete a file
-def delete_file(file_name):
-    try:
-        os.remove(file_name)
-        speak(f"Deleted file {file_name}")
-    except FileNotFoundError:
-        speak(f"File {file_name} not found")
+# Function to delete a file
+def delete_file(file_path):
+    if os.path.exists(file_path):
+        os.remove(file_path)
+        speak(f"{file_path} has been deleted")
+    else:
+        speak(f"{file_path} not found")
 
-# Create a quick note
+# Function to make a note
 def make_note():
-    with open("note.txt", "w") as file:
-        file.write("This is a quick note")
-    speak("Note created successfully")
+    note = "This is a sample note."
+    with open("note.txt", "w") as f:
+        f.write(note)
+    speak("Note has been written")
 
-# Start the voice command loop
-take_command_real_time()
+# Main function
+if __name__ == "__main__":
+    listen_for_wake_word()
