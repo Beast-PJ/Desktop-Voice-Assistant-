@@ -1,276 +1,171 @@
 import os
 import sys
-import json
+import subprocess
 import webbrowser
 import pyttsx3
 import psutil
 import pyautogui
+import speech_recognition as sr
 import datetime
-import pyaudio
-from vosk import Model, KaldiRecognizer
+import time
+import requests
 from fuzzywuzzy import fuzz
-import pvporcupine  # For wake word detection
+import platform
+import smtplib
 
-# Initialize pyttsx3 for text-to-speech
+# Initialize speech engine
+engine = pyttsx3.init()
+
+# Flexible command list with synonyms
+command_list = {
+    'open_application': ['open', 'start', 'launch'],
+    'battery_status': ['battery', 'power', 'charge level'],
+    'time': ['time', 'current time', 'what time is it'],
+    'weather': ['weather', 'temperature', 'forecast'],
+    'set_reminder': ['reminder', 'alert', 'notify'],
+    'screenshot': ['screenshot', 'capture screen'],
+    'volume_up': ['increase volume', 'turn up the sound', 'louder'],
+    'volume_down': ['decrease volume', 'turn down the sound', 'quieter'],
+    'mute': ['mute', 'silence'],
+    'unmute': ['unmute', 'unsilence'],
+    'play_music': ['play music', 'start music', 'play a song'],
+    'send_email': ['send email', 'write email', 'mail'],
+    'search_google': ['search', 'google'],
+    'exit': ['exit', 'quit', 'close']
+}
+
 def speak(text):
-    engine = pyttsx3.init()
     engine.say(text)
     engine.runAndWait()
 
-# Fuzzy matching function to find similar commands
-def match_command(command):
-    command_synonyms = {
-        "open notepad": ["launch notepad", "start notepad", "run notepad", "open note", "create note"],
-        "battery status": ["show battery", "check battery", "battery level", "battery information"],
-        "what time is it": ["current time", "time now", "what's the time", "tell me the time"],
-        "open website": ["launch site", "open url", "visit website", "go to website"],
-        "take screenshot": ["capture screen", "take a snapshot", "screenshot now"],
-        "volume up": ["increase volume", "raise volume", "turn up volume", "louder"],
-        "volume down": ["decrease volume", "turn down volume", "reduce volume", "quieter"],
-        "mute": ["mute sound", "silence", "turn off volume"],
-        "lock computer": ["lock pc", "lock the computer", "lock the system"],
-        "shutdown": ["turn off computer", "shut down pc", "power off"],
-        "restart": ["reboot computer", "restart pc", "reboot system"],
-        "log out": ["log off", "sign out", "logout from account"],
-        "minimize windows": ["hide windows", "minimize all", "collapse windows"],
-        "maximize windows": ["maximize window", "enlarge window"],
-        "close window": ["close this window", "exit window", "close the application"],
-        "play music": ["start music", "play songs", "open music player"],
-        "pause music": ["stop music", "pause song"],
-        "show cpu usage": ["cpu performance", "cpu stats", "check cpu usage"],
-        "show memory": ["memory status", "check memory", "available memory"],
-        "create folder": ["make new folder", "create directory", "new folder"],
-        "delete file": ["remove file", "erase file", "delete document"],
-        "make a note": ["write a note", "create a note", "new note", "make note"],
-    }
-
-    highest_similarity = 0
-    best_match = None
-
-    for key_command, synonyms in command_synonyms.items():
-        # Check for a direct match or similar command
-        for synonym in synonyms:
-            similarity = fuzz.ratio(command, synonym)
-            if similarity > highest_similarity and similarity > 70:  # 70% threshold
-                highest_similarity = similarity
-                best_match = key_command
-
-    return best_match
-
-# Function to listen for the wake word using Porcupine
-def listen_for_wake_word():
-    porcupine = None
+def take_command():
+    recognizer = sr.Recognizer()
+    with sr.Microphone() as source:
+        print("Listening...")
+        recognizer.adjust_for_ambient_noise(source)
+        audio = recognizer.listen(source)
     try:
-        access_key = "YOUR_ACCESS_KEY_HERE"  # Replace this with your actual Picovoice access key
-        porcupine = pvporcupine.create(access_key=access_key, keywords="jarvis")  # Add wake words here
-        pa = pyaudio.PyAudio()
-        stream = pa.open(format=pyaudio.paInt16, channels=1, rate=porcupine.sample_rate, input=True, frames_per_buffer=porcupine.frame_length)
-        stream.start_stream()
-
-        print("Listening for wake word...")
-
-        while True:
-            pcm = stream.read(porcupine.frame_length, exception_on_overflow=False)
-            pcm = bytearray(pcm)
-            keyword_index = porcupine.process(pcm)
-            if keyword_index >= 0:
-                print("Wake word detected!")
-                speak("I'm listening")
-                take_command_real_time()
-
-    except KeyboardInterrupt:
-        print("Terminated by user")
-    finally:
-        if porcupine:
-            porcupine.delete()
-
-    porcupine = None
-    try:
-        porcupine = pvporcupine.create(keywords=["Arise", "computer"])  # Customize your wake words here
-        pa = pyaudio.PyAudio()
-        stream = pa.open(format=pyaudio.paInt16, channels=1, rate=porcupine.sample_rate, input=True, frames_per_buffer=porcupine.frame_length)
-        stream.start_stream()
-
-        print("Listening for wake word...")
-
-        while True:
-            pcm = stream.read(porcupine.frame_length, exception_on_overflow=False)
-            pcm = bytearray(pcm)
-            keyword_index = porcupine.process(pcm)
-            if keyword_index >= 0:
-                print("Wake word detected!")
-                speak("I'm listening")
-                take_command_real_time()
-                
-    except KeyboardInterrupt:
-        print("Terminated by user")
-    finally:
-        if porcupine:
-            porcupine.delete()
-
-# Real-time voice command processing with fuzzy matching
-def take_command_real_time():
-    model_path = "path/to/vosk-model"
-    if not os.path.exists(model_path):
-        print(f"Model not found at {model_path}")
-        return
-
-    model = Model(model_path)
-    recognizer = KaldiRecognizer(model, 16000)
-
-    # Use PyAudio for real-time audio streaming
-    p = pyaudio.PyAudio()
-    stream = p.open(format=pyaudio.paInt16, channels=1, rate=16000, input=True, frames_per_buffer=8000)
-    stream.start_stream()
-
-    print("Listening for commands...")
-
-    while True:
-        data = stream.read(4000, exception_on_overflow=False)
-        if len(data) == 0:
-            continue
-
-        if recognizer.AcceptWaveform(data):
-            result = recognizer.Result()
-            result_json = json.loads(result)
-            command = result_json.get('text', '').lower()
-            if command:
-                print(f"You said: {command}")
-                best_command = match_command(command)
-                if best_command:
-                    print(f"Best match: {best_command}")
-                    execute_command(best_command)
-                else:
-                    speak("Sorry, I didn't understand that command.")
-
-# Command execution based on the best match
-def execute_command(command):
-    if "open notepad" in command:
-        open_application("notepad.exe")
-    elif "battery status" in command:
-        get_battery_status()
-    elif "what time is it" in command:
-        get_time()
-    elif "open website" in command:
-        url = command.split("website", 1)[1].strip()
-        open_website(url)
-    elif "take screenshot" in command:
-        take_screenshot()
-    elif "volume up" in command:
-        pyautogui.press("volumeup")
-        speak("Increasing volume")
-    elif "volume down" in command:
-        pyautogui.press("volumedown")
-        speak("Decreasing volume")
-    elif "mute" in command:
-        pyautogui.press("volumemute")
-        speak("Muting system")
-    elif "lock computer" in command:
-        os.system("rundll32.exe user32.dll,LockWorkStation")
-        speak("Locking the computer")
-    elif "shutdown" in command:
-        os.system("shutdown /s /t 1")
-        speak("Shutting down the computer")
-    elif "restart" in command:
-        os.system("shutdown /r /t 1")
-        speak("Restarting the computer")
-    elif "log out" in command:
-        os.system("shutdown /l")
-        speak("Logging out")
-    elif "minimize windows" in command:
-        pyautogui.hotkey("win", "d")
-        speak("Minimizing all windows")
-    elif "maximize windows" in command:
-        pyautogui.hotkey("win", "up")
-        speak("Maximizing windows")
-    elif "close window" in command:
-        pyautogui.hotkey("alt", "f4")
-        speak("Closing current window")
-    elif "play music" in command:
-        open_application("C:\\Path\\To\\MusicPlayer.exe")  # Modify with your music player path
-    elif "pause music" in command:
-        pyautogui.press("playpause")
-        speak("Pausing music")
-    elif "show cpu usage" in command:
-        show_cpu_usage()
-    elif "show memory" in command:
-        show_memory_info()
-    elif "create folder" in command:
-        create_folder("NewFolder")
-    elif "delete file" in command:
-        delete_file("file_to_delete.txt")  # Modify file path accordingly
-    elif "make a note" in command:
-        make_note()
-    elif "exit" in command:
-        speak("Goodbye!")
-        sys.exit()
-    else:
-        speak("Sorry, I didn't understand that command.")
-
-# Helper functions
-
-# Function to open an application
-def open_application(app_path):
-    try:
-        os.startfile(app_path)
-        speak(f"Opening {app_path}")
+        print("Recognizing...")
+        command = recognizer.recognize_google(audio).lower()
+        print(f"You said: {command}")
+        return command
     except Exception as e:
-        speak(f"Unable to open {app_path}: {str(e)}")
+        print("Sorry, I didn't catch that.", e)
+        return None
 
-# Function to get battery status
-def get_battery_status():
-    battery = psutil.sensors_battery()
-    percent = battery.percent
-    speak(f"Battery is at {percent} percent")
+def match_command(input_command):
+    for key, synonyms in command_list.items():
+        for synonym in synonyms:
+            if fuzz.ratio(input_command, synonym) > 70:
+                return key
+    return None
 
-# Function to get current time
-def get_time():
-    time = datetime.datetime.now().strftime("%I:%M %p")
-    speak(f"The time is {time}")
+# New Features
+def get_weather():
+    api_key = "your_openweather_api_key"
+    location = "your_location"
+    weather_url = f"http://api.openweathermap.org/data/2.5/weather?q={location}&appid={api_key}"
+    try:
+        response = requests.get(weather_url)
+        data = response.json()
+        if data["cod"] != "404":
+            main = data["main"]
+            temperature = main["temp"] - 273.15  # Convert to Celsius
+            weather_description = data["weather"][0]["description"]
+            speak(f"The temperature is {temperature:.2f} degrees Celsius with {weather_description}")
+        else:
+            speak("Could not retrieve weather information.")
+    except:
+        speak("Failed to get weather data.")
 
-# Function to open a website
-def open_website(url):
-    if not url.startswith("http"):
-        url = "http://" + url
-    webbrowser.open(url)
-    speak(f"Opening {url}")
+def set_reminder(reminder_text):
+    with open('reminders.txt', 'a') as file:
+        file.write(f"{reminder_text} - {datetime.datetime.now()}\n")
+    speak("Reminder saved successfully.")
 
-# Function to take a screenshot
-def take_screenshot():
-    screenshot = pyautogui.screenshot()
-    screenshot.save("screenshot.png")
-    speak("Screenshot taken")
+def control_volume(action):
+    if action == 'volume_up':
+        os.system("nircmd.exe changesysvolume 2000")
+        speak("Volume increased.")
+    elif action == 'volume_down':
+        os.system("nircmd.exe changesysvolume -2000")
+        speak("Volume decreased.")
+    elif action == 'mute':
+        os.system("nircmd.exe mutesysvolume 1")
+        speak("System muted.")
+    elif action == 'unmute':
+        os.system("nircmd.exe mutesysvolume 0")
+        speak("System unmuted.")
 
-# Function to show CPU usage
-def show_cpu_usage():
-    cpu_percent = psutil.cpu_percent(interval=1)
-    speak(f"CPU is at {cpu_percent} percent")
+def play_music():
+    music_dir = "C:\\YourMusicDirectory"  # Specify your music directory
+    songs = os.listdir(music_dir)
+    os.startfile(os.path.join(music_dir, songs[0]))
+    speak("Playing music.")
 
-# Function to show memory info
-def show_memory_info():
-    memory = psutil.virtual_memory()
-    speak(f"Available memory is {memory.available / 1024 / 1024:.2f} MB")
+def send_email(subject, body, recipient):
+    your_email = "your_email@gmail.com"
+    your_password = "your_password"
 
-# Function to create a folder
-def create_folder(folder_name):
-    os.makedirs(folder_name, exist_ok=True)
-    speak(f"Folder {folder_name} created")
+    try:
+        server = smtplib.SMTP('smtp.gmail.com', 587)
+        server.starttls()
+        server.login(your_email, your_password)
+        message = f"Subject: {subject}\n\n{body}"
+        server.sendmail(your_email, recipient, message)
+        server.quit()
+        speak("Email sent successfully.")
+    except Exception as e:
+        speak("Failed to send email.")
+        print(e)
 
-# Function to delete a file
-def delete_file(file_path):
-    if os.path.exists(file_path):
-        os.remove(file_path)
-        speak(f"{file_path} has been deleted")
-    else:
-        speak(f"{file_path} not found")
+# Main Command Handler
+def command_handler(command):
+    command_key = match_command(command)
+    if command_key:
+        if command_key == 'open_application':
+            application_name = command.split(" ", 1)[1]
+            os.startfile(application_name)
+        elif command_key == 'battery_status':
+            battery = psutil.sensors_battery()
+            if battery:
+                plugged_status = "Plugged in" if battery.power_plugged else "Not plugged in"
+                speak(f"Battery is {battery.percent}% and {plugged_status}")
+            else:
+                speak("Could not get battery information.")
+        elif command_key == 'time':
+            now = datetime.datetime.now()
+            speak(f"The current time is {now.strftime('%I:%M %p')}")
+        elif command_key == 'weather':
+            get_weather()
+        elif command_key == 'set_reminder':
+            reminder_text = command.split(" ", 1)[1]
+            set_reminder(reminder_text)
+        elif command_key in ['volume_up', 'volume_down', 'mute', 'unmute']:
+            control_volume(command_key)
+        elif command_key == 'screenshot':
+            screenshot = pyautogui.screenshot()
+            screenshot.save("screenshot.png")
+            speak("Screenshot taken.")
+        elif command_key == 'play_music':
+            play_music()
+        elif command_key == 'send_email':
+            # For demo purposes, hardcoded values, can enhance to capture input
+            send_email("Test Subject", "Test Body", "recipient@example.com")
+        elif command_key == 'search_google':
+            search_query = command.split(" ", 1)[1]
+            webbrowser.open(f"https://www.google.com/search?q={search_query}")
+        elif command_key == 'exit':
+            speak("Goodbye!")
+            sys.exit()
 
-# Function to make a note
-def make_note():
-    note = "This is a sample note."
-    with open("note.txt", "w") as f:
-        f.write(note)
-    speak("Note has been written")
+# Main voice command loop
+def take_command_real_time():
+    speak("Hello! How can I assist you today?")
+    while True:
+        command = take_command()
+        if command:
+            command_handler(command)
 
-# Main function
-if __name__ == "__main__":
-    listen_for_wake_word()
+# Start the voice command loop
+take_command_real_time()
