@@ -57,17 +57,37 @@ def take_command():
     recognizer = sr.Recognizer()
     with sr.Microphone() as source:
         print("Listening...")
-        recognizer.adjust_for_ambient_noise(source)
+        recognizer.adjust_for_ambient_noise(source, duration=2)  # Adjust for ambient noise
         audio = recognizer.listen(source)
     try:
         print("Recognizing...")
-        command = recognizer.recognize_google(audio).lower()
+        command = recognizer.recognize_google(audio, language='en-US')
         print(f"You said: {command}")
-        return command
-    except Exception as e:
-        print("Sorry, I didn't catch that.", e)
+        return command.lower()
+    except sr.UnknownValueError:
+        print("Sorry, I couldn't understand that.")
+        speak("Sorry, I couldn't understand that. Could you please repeat?")
+        return None
+    except sr.RequestError:
+        print("API unavailable")
+        speak("API unavailable.")
         return None
 
+def match_command(input_command):
+    best_match = None
+    best_ratio = 0
+    for key, synonyms in command_list.items():
+        # Find the best matching synonym for the input command
+        for synonym in synonyms:
+            ratio = fuzz.ratio(input_command, synonym)
+            if ratio > best_ratio:
+                best_ratio = ratio
+                best_match = key
+    # Set a higher threshold to ensure more accurate matches
+    if best_ratio > 80:  # Increased from 70 to 80 for better accuracy
+        return best_match
+    else:
+        return None
 def match_command(input_command):
     for key, synonyms in command_list.items():
         for synonym in synonyms:
