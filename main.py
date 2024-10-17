@@ -31,7 +31,22 @@ command_list = {
     'play_music': ['play music', 'start music', 'play a song'],
     'send_email': ['send email', 'write email', 'mail'],
     'search_google': ['search', 'google'],
-    'exit': ['exit', 'quit', 'close']
+    'exit': ['exit', 'quit', 'close'],
+    'shutdown': ['shutdown', 'turn off'],
+    'restart': ['restart', 'reboot'],
+    'lock_system': ['lock', 'lock the system'],
+    'sleep': ['sleep', 'standby'],
+    'increase_brightness': ['increase brightness', 'brighten screen'],
+    'decrease_brightness': ['decrease brightness', 'dim screen'],
+    'cpu_usage': ['cpu usage', 'processor load'],
+    'ram_usage': ['ram usage', 'memory load'],
+    'tell_joke': ['tell me a joke', 'make me laugh'],
+    'news': ['news', 'latest news', 'headlines'],
+    'open_notepad': ['open notepad', 'start notepad'],
+    'open_calculator': ['open calculator', 'start calculator'],
+    'system_info': ['system information', 'specs'],
+    'open_browser': ['open browser', 'launch browser'],
+    'check_internet': ['check internet', 'internet status']
 }
 
 def speak(text):
@@ -119,6 +134,75 @@ def send_email(subject, body, recipient):
         speak("Failed to send email.")
         print(e)
 
+def shutdown():
+    speak("Shutting down the system.")
+    os.system("shutdown /s /t 1")
+
+def restart():
+    speak("Restarting the system.")
+    os.system("shutdown /r /t 1")
+
+def lock_system():
+    speak("Locking the system.")
+    ctypes.windll.user32.LockWorkStation()
+
+def sleep():
+    speak("Putting the system to sleep.")
+    os.system("rundll32.exe powrprof.dll,SetSuspendState 0,1,0")
+
+def increase_brightness():
+    # Adjust brightness settings as per the OS
+    speak("Increasing brightness.")
+    # Brightness control varies by OS and system settings
+
+def decrease_brightness():
+    speak("Decreasing brightness.")
+    # Adjust brightness settings as per the OS
+
+def cpu_usage():
+    usage = psutil.cpu_percent(interval=1)
+    speak(f"CPU usage is at {usage}%.")
+
+def ram_usage():
+    usage = psutil.virtual_memory().percent
+    speak(f"RAM usage is at {usage}%.")
+
+def tell_joke():
+    joke = "Why don't scientists trust atoms? Because they make up everything!"
+    speak(joke)
+
+def get_news():
+    news_url = "https://newsapi.org/v2/top-headlines?country=us&apiKey=your_news_api_key"
+    try:
+        response = requests.get(news_url)
+        news_data = response.json()
+        articles = news_data["articles"][:5]
+        for article in articles:
+            speak(article["title"])
+    except:
+        speak("Failed to retrieve the news.")
+
+def open_notepad():
+    os.system("notepad.exe")
+
+def open_calculator():
+    os.system("calc.exe")
+
+def system_info():
+    system_details = platform.uname()
+    speak(f"System: {system_details.system}, Node Name: {system_details.node}, Release: {system_details.release}, Version: {system_details.version}, Machine: {system_details.machine}, Processor: {system_details.processor}")
+
+def open_browser():
+    speak("Opening browser.")
+    webbrowser.open("https://www.google.com")
+
+def check_internet():
+    try:
+        requests.get("https://www.google.com", timeout=5)
+        speak("Internet connection is active.")
+    except:
+        speak("No internet connection.")
+
 # Main Command Handler
 def command_handler(command):
     command_key = match_command(command)
@@ -158,14 +242,44 @@ def command_handler(command):
         elif command_key == 'exit':
             speak("Goodbye!")
             sys.exit()
+        elif command_key == 'shutdown':
+            shutdown()
+        elif command_key == 'restart':
+            restart()
+        elif command_key == 'lock_system':
+            lock_system()
+        elif command_key == 'sleep':
+            sleep()
+        elif command_key == 'increase_brightness':
+            increase_brightness()
+        elif command_key == 'decrease_brightness':
+            decrease_brightness()
+        elif command_key == 'cpu_usage':
+            cpu_usage()
+        elif command_key == 'ram_usage':
+            ram_usage()
+        elif command_key == 'tell_joke':
+            tell_joke()
+        elif command_key == 'news':
+            get_news()
+        elif command_key == 'open_notepad':
+            open_notepad()
+        elif command_key == 'open_calculator':
+            open_calculator()
+        elif command_key == 'system_info':
+            system_info()
+        elif command_key == 'open_browser':
+            open_browser()
+        elif command_key == 'check_internet':
+            check_internet()
+        else:
+            speak("I don't understand that command.")
+    else:
+        speak("Command not found. Please try again.")
 
-# Main voice command loop
-def take_command_real_time():
-    speak("Hello! How can I assist you today?")
+# Listening loop
+if __name__ == "__main__":
     while True:
         command = take_command()
         if command:
             command_handler(command)
-
-# Start the voice command loop
-take_command_real_time()
