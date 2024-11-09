@@ -79,12 +79,6 @@ We welcome all contributors! Want to add more features? Please check out our [Co
 
 ---
 
-## 📜 **License**
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
----
-
 ## 📧 **Contact Us**
 
 Got questions or suggestions? Feel free to reach out to **p.jadhav61657@gmail.com**. Let's make your desktop experience faster, smarter, and more fun! 💬
